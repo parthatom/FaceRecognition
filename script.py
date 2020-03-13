@@ -1,3 +1,7 @@
+"""import serial # if you have not already done so
+ser = serial.Serial('/dev/tty.usbserial', 9600)
+ser.write(b'center x coordinate of face / pixel width of image * 180') # else send '255'"""
+import serial 
 import bz2
 
 import os
@@ -29,153 +33,54 @@ from sklearn.metrics import f1_score, accuracy_score
 import numpy as np
 import os.path
 
-def download_landmarks(dst_file):
-    url = 'http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2'
-    decompressor = bz2.BZ2Decompressor()
-    
-    with urlopen(url) as src, open(dst_file, 'wb') as dst:
-        data = src.read(1024)
-        while len(data) > 0:
-            dst.write(decompressor.decompress(data))
-            data = src.read(1024)
-
-dst_dir = 'models'
-dst_file = os.path.join(dst_dir, 'landmarks.dat')
-
-if not os.path.exists(dst_file):
-    os.makedirs(dst_dir)
-    download_landmarks(dst_file)
-
-print("Initialised")
-
-nn4_small2 = create_model()
-
-
-
-# Input for anchor, positive and negative images
-in_a = Input(shape=(96, 96, 3))
-in_p = Input(shape=(96, 96, 3))
-in_n = Input(shape=(96, 96, 3))
-
-# Output for anchor, positive and negative embedding vectors
-# The nn4_small model instance is shared (Siamese network)
-emb_a = nn4_small2(in_a)
-emb_p = nn4_small2(in_p)
-emb_n = nn4_small2(in_n)
-
-def load_image(path):
-    img = cv2.imread(path, 1)
-    # OpenCV loads images with color channels
-    # in BGR order. So we need to reverse them
-    return img[...,::-1]
-
-
-class TripletLossLayer(Layer):
-    def __init__(self, alpha, **kwargs):
-        self.alpha = alpha
-        super(TripletLossLayer, self).__init__(**kwargs)
-    
-    def triplet_loss(self, inputs):
-        a, p, n = inputs
-        p_dist = K.sum(K.square(a-p), axis=-1)
-        n_dist = K.sum(K.square(a-n), axis=-1)
-        return K.sum(K.maximum(p_dist - n_dist + self.alpha, 0), axis=0)
-    
-    def call(self, inputs):
-        loss = self.triplet_loss(inputs)
-        self.add_loss(loss)
-        return loss
-
-# Layer that computes the triplet loss from anchor, positive and negative embedding vectors
-triplet_loss_layer = TripletLossLayer(alpha=0.2, name='triplet_loss_layer')([emb_a, emb_p, emb_n])
-
-# Model that can be trained with anchor, positive negative images
-nn4_small2_train = Model([in_a, in_p, in_n], triplet_loss_layer)
-
-
 nn4_small2_pretrained = create_model()
 nn4_small2_pretrained.load_weights('weights/nn4.small2.v1.h5')
 
-
-
-class IdentityMetadata():
-    def __init__(self, base, name, file):
-        # dataset base directory
-        self.base = base
-        # identity name
-        self.name = name
-        # image file name
-        self.file = file
-
-    def __repr__(self):
-        return self.image_path()
-
-    def image_path(self):
-        return os.path.join(self.base, self.name, self.file) 
-    
-def load_metadata(path):
-    metadata = []
-    for i in sorted(os.listdir(path)):
-        for f in sorted(os.listdir(os.path.join(path, i))):
-            # Check file extension. Allow only jpg/jpeg' files.
-            ext = os.path.splitext(f)[1]
-            if ext == '.jpg' or ext == '.jpeg':
-                metadata.append(IdentityMetadata(path, i, f))
-    return np.array(metadata)
-
-metadata = load_metadata('images')
-alignment = AlignDlib('models/landmarks.dat')
-
-def align_image(img):
-	
-    return alignment.align(96, img, alignment.getLargestFaceBoundingBox(img), 
-                           landmarkIndices=AlignDlib.OUTER_EYES_AND_NOSE)
-                           
-embedded = np.zeros((metadata.shape[0], 128))
-
-for i, m in enumerate(metadata):
-    img = load_image(m.image_path())
-    img = align_image(img)
-    # scale RGB values to interval [0,1]
-    img = (img / 255.).astype(np.float32)
-    # obtain embedding vector for image
-    embedded[i] = nn4_small2_pretrained.predict(np.expand_dims(img, axis=0))[0]
-    
-def distance(emb1, emb2):
-    return np.sum(np.square(emb1 - emb2))
-
-print("distances calculated")
-
-targets = np.array([m.name for m in metadata])
-
 encoder = LabelEncoder()
-encoder.fit(targets)
+encoderfile = "encoder.sav"
+encoder = pickle.load(open(encoderfile, 'rb'))
 
-# Numerical encoding of identities
-y = encoder.transform(targets)
-
-train_idx = np.arange(metadata.shape[0]) % 2 != 0
-test_idx = np.arange(metadata.shape[0]) % 2 == 0
-
-# 50 train examples of 10 identities (5 examples each)
-X_train = embedded[train_idx]
-# 50 test examples of 10 identities (5 examples each)
-X_test = embedded[test_idx]
-
-y_train = y[train_idx]
-y_test = y[test_idx]
-
-#knn = KNeighborsClassifier(n_neighbors=1, metric='euclidean')
-svc = LinearSVC()
-
-#knn.fit(X_train, y_train)
-svc.fit(X_train, y_train)
+alignment = AlignDlib('models/landmarks.dat')
 modelfile = "svm_one.sav"
-pickle.dump(svc, open(modelfile, 'wb'))
+svc = LinearSVC()
+svc = pickle.load(open(modelfile, 'rb'))
 
-#acc_knn = accuracy_score(y_test, knn.predict(X_test))
-acc_svc = accuracy_score(y_test, svc.predict(X_test))
+cap = cv2.VideoCapture(-1)
+loop = 5e10
+while(True):
+    try:
+        # Capture frame-by-frame
+        ret, jc_orig = cap.read()
 
-print(f'SVM accuracy = {acc_svc}')
+        #jc_orig = cv2.resize(jc_orig, dim, interpolation = cv2.INTER_AREA)
+        bb = alignment.getLargestFaceBoundingBox(jc_orig)##------------------------return this
+        print(bb)
+        #if(bb==None):
+        #    continue
+        #print(bb.left())
+        x = (bb.left() + bb.right())//2
+        y = (bb.top() + bb.bottom())//2
+        #w = bb.right() - bb.left()
+        #h = bb.bottom() - bb.top()
 
+        #centre = (jc_orig.shape[0] + bb[0], jc_orig.shape[1] + bb[1])
+        image= cv2.circle (jc_orig, (x,y), radius = 1, color = (0,0,255),  thickness = -1)
+        jc_aligned = alignment.align(96, jc_orig, bb, landmarkIndices=AlignDlib.OUTER_EYES_AND_NOSE)
+        # ser = serial.Serial('/dev/tty.usbserial', 9600)
+        # serial_write = x/jc_orig.shape[0]
+        # ser.write(serial_write.encode(ASCII))
+        # Our operations on the frame come here
+        jc_aligned = (jc_aligned /255.).astype(np.float32)
+        embedded = nn4_small2_pretrained.predict(np.expand_dims(jc_aligned, axis=0))
+        prediction = svc.predict(embedded)
+        identity = encoder.inverse_transform(prediction)[0] ##-----------------------return this
 
+        print(identity)
+        cv2.imshow("frame", image)
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+    except:
+        print("face not found")
+# When everything done, release the capture
+cap.release()
+cv2.destroyAllWindows()
