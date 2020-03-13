@@ -1,7 +1,7 @@
 """import serial # if you have not already done so
 ser = serial.Serial('/dev/tty.usbserial', 9600)
 ser.write(b'center x coordinate of face / pixel width of image * 180') # else send '255'"""
-import serial 
+import serial
 import bz2
 
 import os
@@ -66,9 +66,9 @@ while(True):
         #centre = (jc_orig.shape[0] + bb[0], jc_orig.shape[1] + bb[1])
         image= cv2.circle (jc_orig, (x,y), radius = 1, color = (0,0,255),  thickness = -1)
         jc_aligned = alignment.align(96, jc_orig, bb, landmarkIndices=AlignDlib.OUTER_EYES_AND_NOSE)
-        # ser = serial.Serial('/dev/tty.usbserial', 9600)
-        # serial_write = x/jc_orig.shape[0]
-        # ser.write(serial_write.encode(ASCII))
+        ser = serial.Serial('/dev/ttyACM0', 9600)
+        serial_write = x/jc_orig.shape[0]
+        ser.write(serial_write.encode(ASCII))
         # Our operations on the frame come here
         jc_aligned = (jc_aligned /255.).astype(np.float32)
         embedded = nn4_small2_pretrained.predict(np.expand_dims(jc_aligned, axis=0))
@@ -80,7 +80,8 @@ while(True):
         if cv2.waitKey(1) & 0xFF == ord('q'):
             break
     except:
-        print("face not found")
+	    ser = serial.Serial('/dev/ttyACM0', 9600)
+	    ser.write(b'255')
 # When everything done, release the capture
 cap.release()
 cv2.destroyAllWindows()
