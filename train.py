@@ -16,6 +16,8 @@ import matplotlib.patches as patches
 from align import AlignDlib
 import cv2
 
+from sklearn.model_selection import GridSearchCV
+
 import warnings
 # Suppress LabelEncoder warning
 warnings.filterwarnings('ignore')
@@ -32,7 +34,7 @@ import os.path
 def download_landmarks(dst_file):
     url = 'http://dlib.net/files/shape_predictor_68_face_landmarks.dat.bz2'
     decompressor = bz2.BZ2Decompressor()
-    
+
     with urlopen(url) as src, open(dst_file, 'wb') as dst:
         data = src.read(1024)
         while len(data) > 0:
@@ -74,13 +76,13 @@ class TripletLossLayer(Layer):
     def __init__(self, alpha, **kwargs):
         self.alpha = alpha
         super(TripletLossLayer, self).__init__(**kwargs)
-    
+
     def triplet_loss(self, inputs):
         a, p, n = inputs
         p_dist = K.sum(K.square(a-p), axis=-1)
         n_dist = K.sum(K.square(a-n), axis=-1)
         return K.sum(K.maximum(p_dist - n_dist + self.alpha, 0), axis=0)
-    
+
     def call(self, inputs):
         loss = self.triplet_loss(inputs)
         self.add_loss(loss)
@@ -111,8 +113,8 @@ class IdentityMetadata():
         return self.image_path()
 
     def image_path(self):
-        return os.path.join(self.base, self.name, self.file) 
-    
+        return os.path.join(self.base, self.name, self.file)
+
 def load_metadata(path):
     metadata = []
     for i in sorted(os.listdir(path)):
@@ -128,22 +130,23 @@ metadata = load_metadata('images')
 alignment = AlignDlib('models/landmarks.dat')
 
 def align_image(img):
-	
-    return alignment.align(96, img, alignment.getLargestFaceBoundingBox(img), 
+
+    return alignment.align(96, img, alignment.getLargestFaceBoundingBox(img),
                            landmarkIndices=AlignDlib.OUTER_EYES_AND_NOSE)
-                           
+
 embedded = np.zeros((metadata.shape[0], 128))
-print("Meta ",metadata.shape)
+#print("Meta ",metadata.shape)
 for i, m in enumerate(metadata):
     img = load_image(m.image_path())
     img = align_image(img)
-    # scale RGB values to interval [0,1]
-    img = (img / 255.).astype(np.float32)
-    em = nn4_small2_pretrained.predict(np.expand_dims(img, axis=0))
-    print("em--",em.shape)
-    # obtain embedding vector for image
-    embedded[i] = em[0]
-    
+    try:
+        img = (img / 255.).astype(np.float32)
+        em = nn4_small2_pretrained.predict(np.expand_dims(img, axis=0))
+        #print("em--",em.shape)
+        # obtain embedding vector for image
+        embedded[i] = em[0]
+    except:
+        pass
 def distance(emb1, emb2):
     return np.sum(np.square(emb1 - emb2))
 
@@ -170,19 +173,22 @@ X_test = embedded[test_idx]
 y_train = y[train_idx]
 y_test = y[test_idx]
 modelfile = "svm_one.sav"
+
+grid={"C": [0.05,0.5,1,1.5,2,5,10], "loss": ["hinge", "squared_hinge"], "class_weight": [None,"balanced"]}
+
 #knn = KNeighborsClassifier(n_neighbors=1, metric='euclidean')
 if(os.path.exists(modelfile) == False):
-	svc = LinearSVC()
+    svc = GridSearchCV(LinearSVC(), grid, scoring="accuracy", cv=3).fit(X_train, y_train)
+    #svc = LinearSVC()
+    #knn.fit(X_train, y_train)
+    #svc.fit(X_train, y_train)
 
-	#knn.fit(X_train, y_train)
-	svc.fit(X_train, y_train)
-	
-	pickle.dump(svc, open(modelfile, 'wb'))
+    pickle.dump(svc, open(modelfile, 'wb'))
 
-	#acc_knn = accuracy_score(y_test, knn.predict(X_test))
-	acc_svc = accuracy_score(y_test, svc.predict(X_test))
+    #acc_knn = accuracy_score(y_test, knn.predict(X_test))
+    acc_svc = accuracy_score(y_test, svc.predict(X_test))
 
-	print(f'SVM accuracy = {acc_svc}')
+    print(f'SVM accuracy = {acc_svc}')
 else:
 	svc = LinearSVC()
 	svc = pickle.load(open(modelfile, 'rb'))
@@ -194,5 +200,3 @@ example_identity = encoder.inverse_transform(example_prediction)[0]
 print("recognised as", example_identity)
 cv2.imshow("example",example_image)
 cv2.waitKey(0)"""
-
-

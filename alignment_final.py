@@ -25,19 +25,26 @@ dim = (width, height)
 jc_orig = cv2.resize(jc_orig, dim, interpolation = cv2.INTER_AREA)
 bb = alignment.getLargestFaceBoundingBox(jc_orig)
 jc_aligned = alignment.align(96, jc_orig, bb, landmarkIndices=AlignDlib.OUTER_EYES_AND_NOSE)
-"""cap = cv2.VideoCapture(-1)
-
+cap = cv2.VideoCapture(-1)
+loop = 5e10
 while(True):
     # Capture frame-by-frame
     ret, jc_orig = cap.read()
-    
+    print(jc_orig.shape)
+    #jc_orig = cv2.resize(jc_orig, dim, interpolation = cv2.INTER_AREA)
+    bb = alignment.getLargestFaceBoundingBox(jc_orig)
+    print(bb)
+    if(bb==None):
+        continue
+		
 
+    jc_aligned = alignment.align(96, jc_orig, bb, landmarkIndices=AlignDlib.OUTER_EYES_AND_NOSE)
     # Our operations on the frame come here
     
 	
     # Display the resulting frame
     cv2.imshow('frame',jc_aligned)
-    cv2.imshow('frame',jc_orig)
+    
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
@@ -50,7 +57,7 @@ cv2.destroyAllWindows()
 
 
 # Show original image
-plt.subplot(131)
+"""plt.subplot(131)
 plt.imshow(jc_orig)
 
 # Show original image with bounding box
@@ -60,9 +67,9 @@ plt.gca().add_patch(patches.Rectangle((bb.left(), bb.top()), bb.width(), bb.heig
 
 # Show aligned image
 plt.subplot(133)
-plt.imshow(jc_aligned)"""
+plt.imshow(jc_aligned"""
 
-print(jc_aligned.shape)
+"""print(jc_aligned.shape)
 cv2.imshow(" ",jc_aligned)
 cv2.imshow("orig", jc_orig)
-cv2.waitKey(0)
+cv2.waitKey(0)"""

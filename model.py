@@ -1,7 +1,8 @@
 # -----------------------------------------------------------------------------------------
 # Code taken from https://github.com/iwantooxxoox/Keras-OpenFace (with minor modifications)
 # -----------------------------------------------------------------------------------------
-
+import tensorflow
+from tensorflow import keras as keras
 from keras.layers import Conv2D, ZeroPadding2D, Activation, Input, concatenate
 from keras.layers.core import Lambda, Flatten, Dense
 from keras.layers.normalization import BatchNormalization
